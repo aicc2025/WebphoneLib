@@ -33,7 +33,7 @@ WebphoneLib is a modern JavaScript library that makes VoIP calling easier by pro
 ## Getting started
 
 ```bash
-$ git clone git@github.com:open-voip-alliance/WebphoneLib.git
+$ git clone git@github.com:aicc2025/WebphoneLib.git
 $ cd WebphoneLib
 $ touch demo/config.mjs
 ```
