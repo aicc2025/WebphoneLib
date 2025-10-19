@@ -12,3 +12,4 @@ demo/config.mjs
 coverage
 # IDE specific files
 .idea/
+CLAUDE.md
