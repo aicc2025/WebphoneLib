@@ -12,7 +12,7 @@ class Logger {
     warn: 3,
     info: 2,
     verbose: 1,
-    debug: 0
+    debug: 0,
   };
 
   private static getLevelIdx(level: string) {

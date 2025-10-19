@@ -4,14 +4,14 @@ export const webaudio = {
   mediaDevices,
   setSinkId: 'Audio' in window && 'setSinkId' in new (window as any).Audio(),
   getUserMedia: mediaDevices && 'getUserMedia' in window.navigator.mediaDevices,
-  audioContext: 'AudioContext' in window || 'webkitAudioContext' in window
+  audioContext: 'AudioContext' in window || 'webkitAudioContext' in window,
 };
 
 const peerConnection = 'RTCPeerConnection' in window;
 
 export const webrtc = {
   peerConnection,
-  connectionstatechange: peerConnection && 'onconnectionstatechange' in RTCPeerConnection.prototype
+  connectionstatechange: peerConnection && 'onconnectionstatechange' in RTCPeerConnection.prototype,
 };
 
 const browserUa: string = navigator.userAgent.toLowerCase();
@@ -21,13 +21,12 @@ export const isChrome = browserUa.indexOf('chrome') !== -1 && !isSafari && !isFi
 
 export const isLocalhost = ['127.0.0.1', 'localhost'].includes(window.location.hostname);
 
-const required = [
-  webrtc.peerConnection,
-  webaudio.mediaDevices,
-  webaudio.getUserMedia,
-  webaudio.audioContext
-];
-
 export function checkRequired(): boolean {
-  return required.every(x => x);
+  const peerConnection = 'RTCPeerConnection' in window;
+  const mediaDevices = 'mediaDevices' in window.navigator;
+  const getUserMedia = mediaDevices && 'getUserMedia' in window.navigator.mediaDevices;
+  const audioContext = 'AudioContext' in window || 'webkitAudioContext' in window;
+
+  const required = [peerConnection, mediaDevices, getUserMedia, audioContext];
+  return required.every((x) => x);
 }

@@ -30,7 +30,7 @@ export type InternalSession = Session & {
 
   on(
     event: 'reinvite',
-    listener: (session: InternalSession, request: IncomingInviteRequest) => void
+    listener: (session: InternalSession, request: IncomingInviteRequest) => void,
   ): InternalSession;
 };
 
@@ -60,7 +60,7 @@ export class SessionMedia extends EventEmitter implements ISessionMedia {
     // Make a copy of media.
     this.media = {
       input: Object.assign({}, media.input),
-      output: Object.assign({}, media.output)
+      output: Object.assign({}, media.output),
     };
 
     session.on('terminated', () => {
@@ -95,7 +95,7 @@ export class SessionMedia extends EventEmitter implements ISessionMedia {
       },
       set muted(value) {
         self.setInputMuted(value);
-      }
+      },
     };
 
     this.output = {
@@ -116,7 +116,7 @@ export class SessionMedia extends EventEmitter implements ISessionMedia {
       },
       set muted(value) {
         self.setOutputMuted(value);
-      }
+      },
     };
   }
 
@@ -239,7 +239,7 @@ export class SessionMedia extends EventEmitter implements ISessionMedia {
         if (e && e.name === 'InvalidAccessError') {
           log.debug(
             'cannot disconnect input audio node as the input audio node is already disconnected',
-            'media'
+            'media',
           );
         } else {
           throw e;

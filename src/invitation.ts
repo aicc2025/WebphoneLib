@@ -11,7 +11,7 @@ export class Invitation extends SessionImpl {
   constructor(options) {
     super(options);
 
-    this.acceptedPromise = new Promise(resolve => {
+    this.acceptedPromise = new Promise((resolve) => {
       this.acceptedRef = resolve;
     });
 
@@ -31,7 +31,7 @@ export class Invitation extends SessionImpl {
         onInvite: () => {
           this._remoteIdentity = this.extractRemoteIdentity();
           this.emit('remoteIdentityUpdate', this, this.remoteIdentity);
-        }
+        },
       };
     });
   }

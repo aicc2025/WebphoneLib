@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 
-import pRetry from 'p-retry';
+import pRetry, { AbortError } from 'p-retry';
 import pTimeout from 'p-timeout';
 import { Core, Web } from 'sip.js';
 import { Invitation } from 'sip.js/lib/api/invitation';
@@ -67,18 +67,20 @@ export type TransportFactory = (uaFactory: UAFactory, options: IClientOptions) =
  */
 export class WrappedTransport extends Web.Transport {
   /**
-   * Disconnect socket. It could happen that the user switches network
+   * Disconnect socket with timeout. It could happen that the user switches network
    * interfaces while calling. If this happens, closing a websocket will
    * cause it to be blocked. To make sure that UA gets to the proper internal
-   * state so that it is ready to 'switch over' to the new network interface
-   * with a new websocket, we call the function that normally causes the
-   * disconnectPromise to be resolved after a timeout.
+   * state, we add a timeout to the disconnect process.
    */
-  protected disconnectPromise(options: any = {}): Promise<any> {
-    return pTimeout(super.disconnectPromise(), 1000, () => {
-      log.debug('Fake-closing the the socket by ourselves.', this.constructor.name);
-      (this as any).onClose({ code: 'fake', reason: 'Artificial timeout' });
-    }).then(() => ({ overrideEvent: true })); // overrideEvent to avoid sip.js emitting disconnected.
+  public override disconnect(): Promise<void> {
+    return pTimeout(super.disconnect(), {
+      milliseconds: 1000,
+      fallback: () => {
+        log.debug('Disconnect timed out, resolving anyway.', this.constructor.name);
+        // In 0.21.2, we can't access private onClose method, so just resolve
+        // The timeout ensures we don't hang forever waiting for disconnect
+      },
+    });
   }
 }
 
@@ -88,7 +90,7 @@ const logLevelConversion = {
   [Core.Levels.debug]: 'debug',
   [Core.Levels.log]: 'info',
   [Core.Levels.warn]: 'warn',
-  [Core.Levels.error]: 'error'
+  [Core.Levels.error]: 'error',
 };
 
 const connector = (level, category, label, content) => {
@@ -97,7 +99,7 @@ const connector = (level, category, label, content) => {
 };
 
 const CANCELLED_REASON = {
-  'Call completed elsewhere': 'call_completed_elsewhere'
+  'Call completed elsewhere': 'call_completed_elsewhere',
 };
 
 /**
@@ -141,14 +143,12 @@ export class ReconnectableTransport extends EventEmitter implements ITransport {
     const { account, transport, userAgentString } = options;
     const uri = UserAgent.makeURI(account.uri);
 
-    const modifiers = [Web.Modifiers.stripVideo];
+    const modifiers = [Web.stripVideo];
     if (Features.isSafari) {
-      modifiers.push(Web.Modifiers.stripG722);
+      modifiers.push(Web.stripG722);
     }
 
     this.uaOptions = {
-      autoStart: false,
-      autoStop: false,
       noAnswerTimeout: 60,
       authorizationUsername: account.user,
       authorizationPassword: account.password,
@@ -161,18 +161,17 @@ export class ReconnectableTransport extends EventEmitter implements ITransport {
         modifiers,
         peerConnectionOptions: {
           rtcConfiguration: {
-            iceServers: transport.iceServers.map((s: string) => ({ urls: s }))
-          }
-        }
+            iceServers: transport.iceServers.map((s: string) => ({ urls: s })),
+          },
+        },
       },
       transportConstructor: WrappedTransport,
       transportOptions: {
-        maxReconnectionAttempts: 0,
         traceSip: true,
-        wsServers: transport.wsServers
+        server: transport.wsServers, // In 0.21.2, renamed from wsServers to server
       },
       uri,
-      userAgentString
+      userAgentString,
     };
   }
 
@@ -197,7 +196,7 @@ export class ReconnectableTransport extends EventEmitter implements ITransport {
     if (this.unregisteredPromise) {
       log.info(
         'Cannot connect while unregistering takes place. Waiting until unregistering is resolved.',
-        this.constructor.name
+        this.constructor.name,
       );
 
       await this.unregisteredPromise;
@@ -207,9 +206,12 @@ export class ReconnectableTransport extends EventEmitter implements ITransport {
       return this.registeredPromise;
     }
 
-    await pTimeout(this.userAgent.start(), this.wsTimeout, () => {
-      log.info('Could not connect to the websocket in time.', this.constructor.name);
-      return Promise.reject(new Error('Could not connect to the websocket in time.'));
+    await pTimeout(this.userAgent.start(), {
+      milliseconds: this.wsTimeout,
+      fallback: () => {
+        log.info('Could not connect to the websocket in time.', this.constructor.name);
+        return Promise.reject(new Error('Could not connect to the websocket in time.'));
+      },
     });
 
     this.createHealthChecker();
@@ -217,7 +219,7 @@ export class ReconnectableTransport extends EventEmitter implements ITransport {
     this.registeredPromise = this.createRegisteredPromise();
     this.registerer.register();
 
-    return this.registeredPromise.then(success => {
+    return this.registeredPromise.then((success) => {
       this.healthChecker.start();
       return success;
     });
@@ -263,7 +265,8 @@ export class ReconnectableTransport extends EventEmitter implements ITransport {
 
     log.info('Disconnected.', this.constructor.name);
 
-    this.userAgent.transport.removeAllListeners();
+    // In sip.js 0.21.2, clear callbacks instead of removeAllListeners
+    this.userAgent.transport.onDisconnect = undefined;
 
     delete this.userAgent;
     delete this.unregisteredPromise;
@@ -281,7 +284,7 @@ export class ReconnectableTransport extends EventEmitter implements ITransport {
   public createSubscriber(contact: string): Subscriber {
     // Introducing a jitter here, to avoid thundering herds.
     return new Subscriber(this.userAgent, UserAgent.makeURI(contact), 'dialog', {
-      expires: SIP_PRESENCE_EXPIRE + jitter(SIP_PRESENCE_EXPIRE, 30)
+      expires: SIP_PRESENCE_EXPIRE + jitter(SIP_PRESENCE_EXPIRE, 30),
     });
   }
 
@@ -358,10 +361,10 @@ export class ReconnectableTransport extends EventEmitter implements ITransport {
 
   private isOnlinePromise(mode: ReconnectionMode) {
     return new Promise((resolve, reject) => {
-      const checkSocket = new WebSocket(this.uaOptions.transportOptions.wsServers, 'sip');
+      const checkSocket = new WebSocket((this.uaOptions.transportOptions as any).server, 'sip');
 
       const handlers = {
-        onError: e => {
+        onError: (e) => {
           log.debug(e, this.constructor.name);
 
           checkSocket.removeEventListener('open', handlers.onOpen);
@@ -381,7 +384,7 @@ export class ReconnectableTransport extends EventEmitter implements ITransport {
           checkSocket.removeEventListener('open', handlers.onOpen);
           checkSocket.removeEventListener('error', handlers.onError);
           resolve(true);
-        }
+        },
       };
 
       checkSocket.addEventListener('open', handlers.onOpen);
@@ -400,14 +403,14 @@ export class ReconnectableTransport extends EventEmitter implements ITransport {
         const cancelled = { reason: undefined };
         const onCancel = (invitation as any).incomingInviteRequest.delegate.onCancel;
         (invitation as any).incomingInviteRequest.delegate.onCancel = (
-          message: Core.IncomingRequestMessage
+          message: Core.IncomingRequestMessage,
         ) => {
           const reason = this.parseHeader(message.getHeader('reason'));
           cancelled.reason = reason ? CANCELLED_REASON[reason.get('text')] : undefined;
           onCancel(message);
         };
         this.emit('invite', { invitation, cancelled });
-      }
+      },
     };
 
     if (this.userAgent.userAgentCore) {
@@ -418,16 +421,16 @@ export class ReconnectableTransport extends EventEmitter implements ITransport {
       //
       // FIXME Keep this up to date with SIP versions, or is there better way to do this?
       this.userAgent.userAgentCore.delegate.onInvite = async (
-        incomingInviteRequest: IncomingInviteRequest
+        incomingInviteRequest: IncomingInviteRequest,
       ): Promise<void> => {
         const invitation = new Invitation(this.userAgent, incomingInviteRequest);
         const ua = this.userAgent as any; // Cast to any so we can access private and protected properties.
 
         incomingInviteRequest.delegate = {
           onCancel: (cancel: IncomingRequestMessage): void => {
-            invitation.onCancel(cancel);
+            (invitation as any)._onCancel(cancel);
           },
-          onTransportError: (error: TransportError): void => {
+          onTransportError: (_error: TransportError): void => {
             // A server transaction MUST NOT discard transaction state based only on
             // encountering a non-recoverable transport error when sending a
             // response.  Instead, the associated INVITE server transaction state
@@ -443,9 +446,9 @@ export class ReconnectableTransport extends EventEmitter implements ITransport {
             // you should be trying to deal with a transport error here, you are likely wrong.
             log.error(
               'A transport error has occurred while handling an incoming INVITE request.',
-              this.constructor.name
+              this.constructor.name,
             );
-          }
+          },
         };
 
         // FIXME: Ported - 100 Trying send should be configurable.
@@ -504,7 +507,7 @@ export class ReconnectableTransport extends EventEmitter implements ITransport {
             if (!targetSession) {
               throw new Error('Session does not exist.');
             }
-            invitation.replacee = targetSession;
+            (invitation as any)._replacee = targetSession;
           }
         }
 
@@ -538,28 +541,34 @@ export class ReconnectableTransport extends EventEmitter implements ITransport {
       log.error('UserAgent does not seem to have a UserAgentCore', this.constructor.name);
     }
 
-    this.userAgent.transport.on('disconnected', this.onTransportDisconnected.bind(this));
+    // In sip.js 0.21.2, use onDisconnect callback instead of event
+    this.userAgent.transport.onDisconnect = (error) => {
+      this.onTransportDisconnected.call(this, error);
+    };
   }
 
   private isOnline(mode: ReconnectionMode): Promise<any> {
     const hasConfiguredWsServer =
       this.uaOptions &&
       this.uaOptions.transportOptions &&
-      this.uaOptions.transportOptions.wsServers;
+      (this.uaOptions.transportOptions as any).server;
 
     if (!hasConfiguredWsServer) {
       return Promise.resolve(false);
     }
 
     const tryOpeningSocketWithTimeout = () =>
-      pTimeout(this.isOnlinePromise(mode), 5000, () => {
-        // In the case that mode is BURST, throw an error which can be
-        // caught by pRetry.
-        if (mode === ReconnectionMode.BURST) {
-          throw new Error('Cannot open socket. Probably DNS failure.');
-        }
+      pTimeout(this.isOnlinePromise(mode), {
+        milliseconds: 5000,
+        fallback: () => {
+          // In the case that mode is BURST, throw an error which can be
+          // caught by pRetry.
+          if (mode === ReconnectionMode.BURST) {
+            throw new Error('Cannot open socket. Probably DNS failure.');
+          }
 
-        return Promise.resolve(false);
+          return Promise.resolve(false);
+        },
       });
 
     // In the case that mode is ONCE, a new socket is created once, also with
@@ -576,31 +585,34 @@ export class ReconnectableTransport extends EventEmitter implements ITransport {
       forever: true,
       maxTimeout: 100, // Note: this is time between retries, not time before operation times out
       minTimeout: 100,
-      onFailedAttempt: error => {
+      onFailedAttempt: (error) => {
         log.debug(
           `Connection attempt ${error.attemptNumber} failed. There are ${error.retriesLeft} retries left.`,
-          this.constructor.name
+          this.constructor.name,
         );
-      }
+      },
     };
 
     const retryForever = pRetry(() => {
       // It could happen that this function timed out. Because this is a
       // async function we check the client status to stop this loop.
       if (this.status === ClientStatus.DISCONNECTED) {
-        throw new pRetry.AbortError("It's no use. Stop trying to recover");
+        throw new AbortError("It's no use. Stop trying to recover");
       }
 
       return tryOpeningSocketWithTimeout();
     }, retryOptions);
 
-    return pTimeout(retryForever, this.dyingCounter, () => {
-      log.info(
-        'We could not recover the session(s) within 1 minute. ' +
-          'After this time the SIP server has terminated the session(s).',
-        this.constructor.name
-      );
-      return Promise.resolve(false);
+    return pTimeout(retryForever, {
+      milliseconds: this.dyingCounter,
+      fallback: () => {
+        log.info(
+          'We could not recover the session(s) within 1 minute. ' +
+            'After this time the SIP server has terminated the session(s).',
+          this.constructor.name,
+        );
+        return Promise.resolve(false);
+      },
     });
   }
 
@@ -638,7 +650,7 @@ export class ReconnectableTransport extends EventEmitter implements ITransport {
 
     log.debug(
       `Reconnecting in ${this.retry.timeout / second}s to avoid thundering herd`,
-      this.constructor.name
+      this.constructor.name,
     );
     setTimeout(async () => {
       // Only trigger this function if we haven't reconnected in the same time.
@@ -656,7 +668,7 @@ export class ReconnectableTransport extends EventEmitter implements ITransport {
     if (this.registerer) {
       // Remove from UA's collection, not using this.registerer.dispose to
       // avoid unregistering.
-      delete this.userAgent.registerers[(this.registerer as any).id];
+      delete (this.userAgent as any)._registerers[(this.registerer as any).id];
     }
 
     this.registerer = new Registerer(this.userAgent, {});
@@ -686,12 +698,12 @@ export class ReconnectableTransport extends EventEmitter implements ITransport {
     if (this.unregisterer) {
       // Remove from UA's collection, not using this.registerer.dispose to
       // avoid unregistering.
-      delete this.userAgent.registerers[(this.unregisterer as any).id];
+      delete (this.userAgent as any)._registerers[(this.unregisterer as any).id];
     }
 
     this.unregisterer = new Registerer(this.userAgent);
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve, _reject) => {
       // Handle outgoing session state changes.
       this.unregisterer.stateChange.once(async (newState: RegistererState) => {
         if (newState === RegistererState.Unregistered) {
@@ -725,7 +737,7 @@ export class ReconnectableTransport extends EventEmitter implements ITransport {
         // anymore.
         log.debug(
           'Priority set to false. Our call was probably terminated by the SIP server.',
-          this.constructor.name
+          this.constructor.name,
         );
         this.priority = false;
       }
@@ -770,7 +782,7 @@ export class ReconnectableTransport extends EventEmitter implements ITransport {
     if (!this.wasWindowOffline) {
       log.debug(
         'Transport disconnected while there is internet, trying to reconnect',
-        this.constructor.name
+        this.constructor.name,
       );
       this.tryUntilConnected();
     }
@@ -805,7 +817,7 @@ export class ReconnectableTransport extends EventEmitter implements ITransport {
         header
           .replace(/"/g, '')
           .split(';')
-          .map(i => i.split('=') as [string, string])
+          .map((i) => i.split('=') as [string, string]),
       );
     } else {
       return undefined;

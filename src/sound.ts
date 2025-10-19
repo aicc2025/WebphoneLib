@@ -22,7 +22,7 @@ export class Sound {
     this.options = {
       volume: options.volume === undefined ? 1.0 : options.volume,
       overlap: options.overlap === undefined ? false : options.overlap,
-      sinkId: options.sinkId
+      sinkId: options.sinkId,
     };
   }
 
@@ -36,7 +36,7 @@ export class Sound {
 
   public set volume(newVolume: number) {
     this.options.volume = newVolume;
-    this.samples.forEach(s => {
+    this.samples.forEach((s) => {
       s.volume = newVolume;
     });
   }
@@ -48,7 +48,7 @@ export class Sound {
   public set sinkId(newSinkId: MediaDeviceId) {
     this.options.sinkId = newSinkId;
     if (Features.webaudio.setSinkId) {
-      this.samples.forEach(s => {
+      this.samples.forEach((s) => {
         (s as any).setSinkId(newSinkId);
       });
     } else {
@@ -57,7 +57,7 @@ export class Sound {
   }
 
   public async play(
-    { loop, timeout }: { loop: boolean; timeout: number } = { loop: false, timeout: undefined }
+    { loop, timeout }: { loop: boolean; timeout: number } = { loop: false, timeout: undefined },
   ): Promise<void> {
     if (this.options.overlap && loop) {
       throw new Error('loop and overlap cannot be combined');
@@ -78,11 +78,11 @@ export class Sound {
         window.clearTimeout(this.stopTimer);
         delete this.stopTimer;
       }
-      this.samples = this.samples.filter(s => s !== sample);
+      this.samples = this.samples.filter((s) => s !== sample);
     };
 
     const resultPromise = new Promise<void>((resolve, reject) => {
-      sample.addEventListener('error', e => {
+      sample.addEventListener('error', (e) => {
         cleanup();
         reject(e);
       });
@@ -135,7 +135,7 @@ export class Sound {
   }
 
   public stop() {
-    this.samples.forEach(s => {
+    this.samples.forEach((s) => {
       s.currentTime = 0;
       s.pause();
     });

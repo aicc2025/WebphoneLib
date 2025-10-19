@@ -1,9 +1,8 @@
 import pTimeout from 'p-timeout';
-import { C, Core } from 'sip.js';
-import { UserAgent } from 'sip.js/lib/api/user-agent';
+import { Core, UserAgent } from 'sip.js';
 
 export class HealthChecker {
-  private optionsTimeout: NodeJS.Timeout;
+  private optionsTimeout: ReturnType<typeof setTimeout>;
   private logger: Core.Logger;
 
   constructor(private userAgent: UserAgent) {
@@ -20,7 +19,7 @@ export class HealthChecker {
    */
   public start(): any {
     return pTimeout(
-      new Promise(resolve => {
+      new Promise<void>((resolve) => {
         clearTimeout(this.optionsTimeout);
         this.userAgent.userAgentCore.request(this.createOptionsMessage(), {
           onAccept: () => {
@@ -28,15 +27,20 @@ export class HealthChecker {
             this.optionsTimeout = setTimeout(() => {
               this.start();
             }, 22000);
-          }
+          },
         });
       }),
-      2000, // if there is no response after 2 seconds, emit disconnected.
-      () => {
-        this.logger.error('No response after OPTIONS message to sip server.');
-        clearTimeout(this.optionsTimeout);
-        this.userAgent.transport.emit('disconnected');
-      }
+      {
+        milliseconds: 2000, // if there is no response after 2 seconds, trigger disconnect.
+        fallback: () => {
+          this.logger.error('No response after OPTIONS message to sip server.');
+          clearTimeout(this.optionsTimeout);
+          // In sip.js 0.21.2, trigger disconnect which will update transport state
+          this.userAgent.transport.disconnect().catch((err) => {
+            this.logger.error(`Failed to disconnect transport: ${err}`);
+          });
+        },
+      },
     );
   }
 
@@ -45,9 +49,9 @@ export class HealthChecker {
       params: {
         toUri: this.userAgent.configuration.uri,
         cseq: 1,
-        fromUri: this.userAgent.userAgentCore.configuration.aor
+        fromUri: this.userAgent.userAgentCore.configuration.aor,
       },
-      registrar: undefined
+      registrar: undefined,
     };
 
     /* If no 'registrarServer' is set use the 'uri' value without user portion. */
@@ -63,11 +67,11 @@ export class HealthChecker {
     }
 
     return this.userAgent.userAgentCore.makeOutgoingRequestMessage(
-      C.OPTIONS,
+      'OPTIONS',
       settings.registrar,
       settings.params.fromUri,
       settings.params.toUri ? settings.params.toUri : settings.registrar,
-      settings.params
+      settings.params,
     );
   }
 }

@@ -1,7 +1,6 @@
 /**
  * @hidden
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getPropertyDescriptor(obj: any, name: string) {
   if (obj) {
     return (
@@ -15,34 +14,46 @@ function getPropertyDescriptor(obj: any, name: string) {
  * Create immutable proxies for all `properties` on `obj` proxying to `impl`.
  * @hidden
  */
-// eslint-disable-next-line @typescript-eslint/ban-types
 export function createFrozenProxy<T>(obj: object, impl: T, properties: string[]): T {
   const missingDescriptors = properties.filter(
-    name => getPropertyDescriptor(impl, name) === undefined
+    (name) => getPropertyDescriptor(impl, name) === undefined,
   );
 
   if (missingDescriptors.length > 0) {
     throw new Error(
-      `Implementation is not complete, missing properties: ${missingDescriptors.join(', ')}`
+      `Implementation is not complete, missing properties: ${missingDescriptors.join(', ')}`,
     );
   }
 
-  return Object.freeze(
-    properties.reduce((proxy, name) => {
-      const desc = getPropertyDescriptor(impl, name);
+  const target = properties.reduce((proxy, name) => {
+    const desc = getPropertyDescriptor(impl, name);
 
-      if ('value' in desc) {
-        if (typeof desc.value === 'function') {
-          proxy[name] = desc.value.bind(impl);
-        } else {
-          proxy[name] = desc.value;
-        }
-        return proxy;
+    if ('value' in desc) {
+      if (typeof desc.value === 'function') {
+        proxy[name] = desc.value.bind(impl);
       } else {
-        return Object.defineProperty(proxy, name, {
-          get: desc.get.bind(impl)
-        });
+        proxy[name] = desc.value;
       }
-    }, obj)
-  );
+      return proxy;
+    } else {
+      return Object.defineProperty(proxy, name, {
+        get: desc.get.bind(impl),
+      });
+    }
+  }, obj);
+
+  return new Proxy(target, {
+    set(_target, _prop, _value) {
+      throw new TypeError('Cannot add or modify properties on frozen object');
+    },
+    defineProperty(_target, _prop, _descriptor) {
+      throw new TypeError('Cannot define property on frozen object');
+    },
+    deleteProperty(_target, _prop) {
+      throw new TypeError('Cannot delete property on frozen object');
+    },
+    setPrototypeOf(_target, _proto) {
+      throw new TypeError('Cannot set prototype on frozen object');
+    },
+  }) as T;
 }

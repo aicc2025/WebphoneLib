@@ -18,7 +18,7 @@ class AutoplaySingleton extends EventEmitter implements IAutoplay {
 
   constructor() {
     super();
-    this.allowed = new Promise(resolve => {
+    this.allowed = new Promise((resolve) => {
       this.once('allowed', resolve);
     });
   }
@@ -54,7 +54,7 @@ class AutoplaySingleton extends EventEmitter implements IAutoplay {
     try {
       await playPromise;
       return true;
-    } catch (e) {
+    } catch (_e) {
       return false;
     }
   }

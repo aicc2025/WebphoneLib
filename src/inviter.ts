@@ -12,15 +12,15 @@ export class Inviter extends SessionImpl {
   constructor(options) {
     super(options);
 
-    this.triedPromise = new Promise(tryingResolve => {
-      this.progressedPromise = new Promise(progressResolve => {
+    this.triedPromise = new Promise((tryingResolve) => {
+      this.progressedPromise = new Promise((progressResolve) => {
         this.acceptedPromise = new Promise((acceptedResolve, acceptedReject) => {
           this.inviteOptions = this.makeInviteOptions({
             onAccept: acceptedResolve,
             onReject: acceptedResolve,
-            onRejectThrow: acceptedReject,
+            _onRejectThrow: acceptedReject,
             onProgress: progressResolve,
-            onTrying: tryingResolve
+            onTrying: tryingResolve,
           });
         });
       });

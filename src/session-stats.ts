@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 
-import { Session as UserAgentSession } from 'sip.js/lib/api/session';
+import { Session as UserAgentSession, SessionState } from 'sip.js';
 
 import { log } from './logger';
 
@@ -16,7 +16,7 @@ class StatsAggregation {
     highest: undefined,
     last: undefined,
     lowest: undefined,
-    sum: 0
+    sum: 0,
   };
 
   public add(sample: number) {
@@ -70,10 +70,10 @@ export class SessionStats extends EventEmitter {
   public constructor(
     session: UserAgentSession,
     {
-      statsInterval
+      statsInterval,
     }: {
       statsInterval: number;
-    }
+    },
   ) {
     super();
 
@@ -81,9 +81,11 @@ export class SessionStats extends EventEmitter {
 
     // Set up stats timer to periodically query and process the peer connection's
     // statistics and feed them to the stats aggregator.
-    session.once('SessionDescriptionHandler-created', () => {
+    const setupStatsTimer = () => {
       this.statsTimer = window.setInterval(() => {
-        const pc = (session.sessionDescriptionHandler as any).peerConnection;
+        const pc = (session.sessionDescriptionHandler as any)?.peerConnection;
+        if (!pc) return;
+
         pc.getStats().then((stats: RTCStatsReport) => {
           if (this.add(stats)) {
             this.emit('statsUpdated', this);
@@ -92,7 +94,24 @@ export class SessionStats extends EventEmitter {
           }
         });
       }, this.statsInterval);
-    });
+    };
+
+    // Set up delegate to be notified when SessionDescriptionHandler is created
+    const originalDelegate = session.delegate;
+    session.delegate = {
+      ...originalDelegate,
+      onSessionDescriptionHandler: (sdh, provisional) => {
+        if (!provisional) {
+          setupStatsTimer();
+        }
+        originalDelegate?.onSessionDescriptionHandler?.(sdh, provisional);
+      },
+    };
+
+    // If SDH already exists, set up immediately
+    if (session.sessionDescriptionHandler) {
+      setupStatsTimer();
+    }
   }
 
   public clearStatsTimer() {
@@ -113,7 +132,7 @@ export class SessionStats extends EventEmitter {
     let inbound: any;
     let candidatePair: any;
 
-    for (const obj of stats.values()) {
+    for (const obj of (stats as any).values()) {
       if (obj.type === 'inbound-rtp') {
         inbound = obj;
       } else if (obj.type === 'candidate-pair' && obj.nominated) {
@@ -132,7 +151,7 @@ export class SessionStats extends EventEmitter {
 
         // Firefox doesn't have or expose this property. Fallback to using 50ms as
         // a guess for RTT.
-        rtt: candidatePair.currentRoundTripTime || 0.05
+        rtt: candidatePair.currentRoundTripTime || 0.05,
       };
 
       this.mos.add(calculateMOS(measurement));

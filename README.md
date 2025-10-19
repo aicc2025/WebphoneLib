@@ -1,22 +1,34 @@
 # Open VoIP Alliance Webphone Lib
 
-![npm](https://img.shields.io/npm/v/webphone-lib?style=flat-square)
+This project is a fork of the original unmaintained project at:
+<https://github.com/open-voip-alliance/WebphoneLib.git>
 
-Makes calling easier by providing a layer of abstraction around SIP.js. To figure out why we made this, read [our blog post](https://wearespindle.com/articles/how-to-abstract-the-complications-of-sip-js-away-with-our-library/).
+## Introduction
 
-## Documentation
+WebphoneLib is a modern JavaScript library that makes VoIP calling easier by providing a clean layer of abstraction around SIP.js. It simplifies the complexity of WebRTC and SIP protocols, allowing developers to build powerful voice communication applications with minimal effort.
 
-Check out the documentation [here](https://open-voip-alliance.github.io/WebphoneLib/).
+### Key Features
 
-## Cool stuff
+- **Easy-to-use API**: Modern JavaScript API with Promise-based design for seamless integration
+- **Hot Audio Device Switching**: Switch audio input/output devices mid-call without interruption
+- **Automatic Call Recovery**: Intelligently recovers active calls during connectivity loss
+- **WebRTC Support**: Full WebRTC implementation with STUN/TURN server support
+- **Session Management**: Complete call lifecycle management including hold, transfer, and DTMF
+- **Real-time Statistics**: Monitor call quality with built-in MOS calculation and stats tracking
+- **Type Safety**: Written in TypeScript with comprehensive type definitions
 
-- Allows you to switch audio devices mid-call.
-- Automatically recovers calls on connectivity loss.
-- Offers an easy-to-use modern javascript api.
+### Use Cases
 
-## Join us!
+- Web-based softphones and communication platforms
+- Customer support and call center applications
+- Click-to-call integration for websites
+- Video conferencing platforms with audio fallback
+- IoT and embedded device communication
 
-We would love more input for this project. Create an issue, create a pull request for an issue, or if you're not really sure, ask us. We're often hanging around on [discourse](https://discourse.openvoipalliance.org/). We would also love to hear your thoughts and feedback on our project and answer any questions you might have!
+## Requirements
+
+- Node.js >= 22.0.0
+- npm >= 10.0.0
 
 ## Getting started
 
@@ -54,12 +66,12 @@ const account = {
   user: 'accountId',
   password: 'password',
   uri: 'sip:accountId@<realm>',
-  name: 'test'
+  name: 'test',
 };
 
 const transport = {
   wsServers: '<websocket-url>', // or replace with your
-  iceServers: [] // depending on if your provider needs STUN/TURN.
+  iceServers: [], // depending on if your provider needs STUN/TURN.
 };
 
 const media = {
@@ -67,13 +79,13 @@ const media = {
     id: undefined, // default audio device
     audioProcessing: true,
     volume: 1.0,
-    muted: false
+    muted: false,
   },
   output: {
     id: undefined, // default audio device
     volume: 1.0,
-    muted: false
-  }
+    muted: false,
+  },
 };
 
 const client = new Client({ account, transport, media });
@@ -157,14 +169,14 @@ const client = new Client({
       id: undefined, // default input device
       audioProcessing: true,
       volume: 1.0,
-      muted: false
+      muted: false,
     },
     output: {
       id: undefined, // default output device
       volume: 1.0,
-      muted: false
-    }
-  }
+      muted: false,
+    },
+  },
 });
 ```
 
@@ -186,7 +198,7 @@ session.media.setInput({
   id: '120398120398123',
   audioProcessing: true,
   volume: 0.5,
-  muted: true
+  muted: true,
 });
 ```
 
@@ -200,17 +212,8 @@ session.media.setInput({
 | npm run test-watch        | Watch the tests as you make changes                                             |
 | npm run build             | Build the projects                                                              |
 | npm run prepare           | Prepare the project for publish, this is automatically run before `npm publish` |
-| npm run lint              | Run `tslint` over the source files                                              |
+| npm run lint              | Run `eslint` over the source files                                              |
 | npm run typecheck         | Verifies type constraints are met                                               |
-
-## Generate documentation
-
-[Typedoc](https://typedoc.org/guides/doccomments/) is used to generate the
-documentation from the `jsdoc` comments in the source code. See [this
-link](https://typedoc.org/guides/doccomments/) for more information on which
-`jsdoc` tags are supported.
-
-## Run puppeteer tests
 
 ### Using docker
 

@@ -18,7 +18,7 @@ export function statusFromDialog(notification: any): SubscriptionStatus | string
   if (!dialogNode) {
     log.error(
       `[blf] ${notification}  \n did not result in a valid dialogNode`,
-      'subscription.statusFromDialog'
+      'subscription.statusFromDialog',
     );
     return null;
   }

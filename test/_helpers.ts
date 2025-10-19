@@ -23,12 +23,12 @@ export function defaultTransportFactory() {
 export function createClientImpl(
   uaFactory: UAFactory,
   transportFactory: TransportFactory,
-  additionalOptions: UserAgentOptions = {}
+  additionalOptions: UserAgentOptions = {},
 ): ClientImpl {
   return new ClientImpl(
     uaFactory,
     transportFactory,
-    Object.assign(minimalOptions(), additionalOptions)
+    Object.assign(minimalOptions(), additionalOptions),
   );
 }
 
@@ -42,25 +42,25 @@ export function minimalOptions() {
       user: '',
       password: '',
       uri: '',
-      name: ''
+      name: '',
     },
     transport: {
-      wsServers: '',
-      iceServers: []
+      wsServers: 'wss://example.com:5060', // In 0.21.2, must be valid WebSocket URL
+      iceServers: [],
     },
     media: {
       input: {
         id: '',
         volume: 1.0,
         audioProcessing: false,
-        muted: false
+        muted: false,
       },
       output: {
         id: '',
         volume: 1.0,
-        muted: false
-      }
-    }
+        muted: false,
+      },
+    },
   };
 }
 

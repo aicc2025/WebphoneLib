@@ -1,15 +1,14 @@
-import { Web } from 'sip.js';
-import { SessionDescriptionHandler } from 'sip.js/lib/Web';
+import { SessionDescriptionHandler, Web } from 'sip.js';
 
 import { audioContext } from './audio-context';
 import { isPrivateIP } from './lib/utils';
 import { log } from './logger';
 
 export function stripPrivateIps(
-  description: RTCSessionDescriptionInit
+  description: RTCSessionDescriptionInit,
 ): Promise<RTCSessionDescriptionInit> {
   const lines = description.sdp.split(/\r\n/);
-  const filtered = lines.filter(line => {
+  const filtered = lines.filter((line) => {
     const m = /a=candidate:\d+ \d+ (?:udp|tcp) \d+ (\d+\.\d+\.\d+\.\d+)/i.exec(line);
     return !m || !isPrivateIP(m[1]);
   });
@@ -18,44 +17,59 @@ export function stripPrivateIps(
 }
 
 export function sessionDescriptionHandlerFactory(session, options): SessionDescriptionHandler {
-  const sdh = Web.SessionDescriptionHandler.defaultFactory(session, options);
-
-  session.__streams = {
-    localStream: audioContext.createMediaStreamDestination(),
-    remoteStream: new MediaStream()
-  };
-
-  (sdh as any).getMediaStream = async () => {
+  // Create custom media stream factory that uses our audioContext
+  const mediaStreamFactory = async (constraints: MediaStreamConstraints) => {
     await session.__media.setInput();
     return session.__streams.localStream.stream;
   };
 
-  (sdh as any).on('addTrack', async (track, stream) => {
-    const pc = session.sessionDescriptionHandler.peerConnection;
-    // eslint-disable-next-line prefer-rest-params
-    log.debug('addTrack' + arguments, 'sessionDescriptionHandlerFactory');
+  // Create the factory with custom media stream factory
+  const factory = Web.defaultSessionDescriptionHandlerFactory(mediaStreamFactory);
+  const sdh = factory(session, options);
 
-    let remoteStream = new MediaStream();
-    if (pc.getReceivers) {
-      pc.getReceivers().forEach(receiver => {
-        const rtrack = receiver.track;
-        if (rtrack) {
-          remoteStream.addTrack(rtrack);
-        }
-      });
-    } else {
-      remoteStream = pc.getRemoteStreams()[0];
-    }
+  // Initialize session streams
+  session.__streams = {
+    localStream: audioContext.createMediaStreamDestination(),
+    remoteStream: new MediaStream(),
+  };
 
-    session.__streams.remoteStream = remoteStream;
-    try {
-      await session.__media.setOutput();
-    } catch (e) {
-      log.error(e, 'sessionDescriptionHandlerFactory');
-      session.__media.emit('mediaFailure');
-    }
-  });
+  // Set up peer connection delegate to handle track events (replaces old .on('addTrack'))
+  const originalDelegate = sdh.peerConnectionDelegate;
+  sdh.peerConnectionDelegate = {
+    ...originalDelegate,
+    ontrack: async (event: Event) => {
+      const pc = sdh.peerConnection;
+      if (!pc) return;
 
-  log.debug('Returning patched SDH for session' + session, 'sessionDescriptionHandlerFactory');
+      log.debug('ontrack event', 'sessionDescriptionHandlerFactory');
+
+      let remoteStream = new MediaStream();
+      if (pc.getReceivers) {
+        pc.getReceivers().forEach((receiver) => {
+          const rtrack = receiver.track;
+          if (rtrack) {
+            remoteStream.addTrack(rtrack);
+          }
+        });
+      } else {
+        remoteStream = (pc as any).getRemoteStreams()[0];
+      }
+
+      session.__streams.remoteStream = remoteStream;
+      try {
+        await session.__media.setOutput();
+      } catch (e) {
+        log.error(e, 'sessionDescriptionHandlerFactory');
+        session.__media.emit('mediaFailure');
+      }
+
+      // Call original delegate if it exists
+      if (originalDelegate?.ontrack) {
+        originalDelegate.ontrack(event);
+      }
+    },
+  };
+
+  log.debug('Returning patched SDH for session', 'sessionDescriptionHandlerFactory');
   return sdh;
 }

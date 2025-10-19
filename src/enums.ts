@@ -4,7 +4,7 @@ export enum ClientStatus {
   DYING = 'dying', // (once you have a call and connectivity drops, your call is 'dying' for 1 minute)
   RECOVERING = 'recovering',
   DISCONNECTING = 'disconnecting',
-  DISCONNECTED = 'disconnected'
+  DISCONNECTED = 'disconnected',
 }
 
 export enum SessionStatus {
@@ -12,7 +12,7 @@ export enum SessionStatus {
   RINGING = 'ringing',
   ACTIVE = 'active',
   ON_HOLD = 'on_hold',
-  TERMINATED = 'terminated'
+  TERMINATED = 'terminated',
 }
 
 export enum SubscriptionStatus {
@@ -23,10 +23,10 @@ export enum SubscriptionStatus {
   RINGING = 'ringing',
   CONFIRMED = 'confirmed',
   BUSY = 'busy',
-  TERMINATED = 'terminated'
+  TERMINATED = 'terminated',
 }
 
 export enum ReconnectionMode {
   ONCE,
-  BURST
+  BURST,
 }
